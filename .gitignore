@@ -1,0 +1,31 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Data (VERY IMPORTANT)
+Data/*.csv
+Data/yfinance_data/
+
+# OS / User files
+.AppData/
+.Documents/
+.Downloads/
+.Desktop/
+OneDrive/
+NTUSER*
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Misc
+.cache/
+.config/
+
+ml/
