@@ -30,7 +30,7 @@ def _root_dir() -> Path:
     return Path(__file__).resolve().parents[3]
 
 MODEL_DIR = _root_dir() / "ml" / "serving"
-SKMODEL_PATH = MODEL_DIR / "model.joblib"
+SKMODEL_PATH = MODEL_DIR / "lstm_model.keras"
 #"lstm_model.keras"
 
 def load_models():
