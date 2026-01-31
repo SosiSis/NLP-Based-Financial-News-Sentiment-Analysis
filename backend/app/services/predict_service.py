@@ -1,124 +1,159 @@
 from pathlib import Path
 from typing import Dict, Any
-try:
-    import joblib
-except Exception:  
-    joblib = None
 
-try:
-    import torch
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification
-    from torch.nn.functional import softmax
-except Exception:  
-    torch = None
-    AutoTokenizer = None
-    AutoModelForSequenceClassification = None
-    softmax = None
+import numpy as np
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from torch.nn.functional import softmax
 
 from nltk.sentiment import SentimentIntensityAnalyzer
 import nltk
 
-_model = None
+from tensorflow.keras.models import load_model
+
+
+_finbert_model = None
 _tokenizer = None
 _vader = None
-_sklearn_model = None
+_lstm_model = None
+
+
 
 def _root_dir() -> Path:
-    
+   
     return Path(__file__).resolve().parents[3]
 
+
 MODEL_DIR = _root_dir() / "ml" / "serving"
-SKMODEL_PATH = MODEL_DIR / "lstm_model.keras"
-#"lstm_model.keras"
+LSTM_MODEL_PATH = MODEL_DIR / "lstm_model.keras"
+
+
 
 def load_models():
-    """Load FinBERT, VADER and optional sklearn model."""
-    global _tokenizer, _model, _vader, _sklearn_model
-    
+    global _finbert_model, _tokenizer, _vader, _lstm_model
+
+    print("Model directory:", MODEL_DIR)
+    print("LSTM model path:", LSTM_MODEL_PATH)
+
+    # -------- FinBERT --------
     model_name = "ProsusAI/finbert"
-    if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
+    try:
+        _tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _finbert_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        _finbert_model.to(device)
+        _finbert_model.eval()
+        print("FinBERT loaded on", device)
+    except Exception as e:
+        print("Failed to load FinBERT:", e)
+        _finbert_model = None
         _tokenizer = None
-        _model = None
-    else:
-        try:
-            _tokenizer = AutoTokenizer.from_pretrained(model_name)
-            _model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            _model.to(device)
-            _model.eval()
-        except Exception:
-            _tokenizer = None
-            _model = None
-    # VADER
+
+    # -------- VADER --------
     nltk.download("vader_lexicon", quiet=True)
     _vader = SentimentIntensityAnalyzer()
-    # Optional sklearn model
-    if SKMODEL_PATH.exists() and joblib is not None:
+    print("VADER loaded")
+
+    # -------- Keras LSTM --------
+    if LSTM_MODEL_PATH.exists():
         try:
-            _sklearn_model = joblib.load(SKMODEL_PATH)
-        except Exception:
-            _sklearn_model = None
+            _lstm_model = load_model(LSTM_MODEL_PATH)
+            print("Keras LSTM model loaded")
+        except Exception as e:
+            print("Failed to load LSTM model:", e)
+            _lstm_model = None
+    else:
+        print("LSTM model NOT FOUND")
+
 
 
 def _finbert_scores(text: str) -> Dict[str, float]:
-    if not text or _tokenizer is None or _model is None:
-        return {"finbert_positive": 0.0, "finbert_negative": 0.0, "finbert_neutral": 0.0}
-    inputs = _tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding=True)
-    device = next(_model.parameters()).device
+    if not text or _tokenizer is None or _finbert_model is None:
+        return {
+            "finbert_positive": 0.0,
+            "finbert_negative": 0.0,
+            "finbert_neutral": 0.0,
+        }
+
+    inputs = _tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+        padding=True,
+    )
+
+    device = next(_finbert_model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
+
     with torch.no_grad():
-        outputs = _model(**inputs)
+        outputs = _finbert_model(**inputs)
         probs = softmax(outputs.logits, dim=1)[0].cpu().numpy()
+
     scores = {}
-    for idx, p in enumerate(probs):
-        label = _model.config.id2label[idx].lower()
+    for i, p in enumerate(probs):
+        label = _finbert_model.config.id2label[i].lower()
         scores[f"finbert_{label}"] = float(p)
+
     return scores
+
 
 
 def _vader_compound(text: str) -> float:
     if not text or _vader is None:
         return 0.0
-    try:
-        return float(_vader.polarity_scores(text)["compound"])
-    except Exception:
-        return 0.0
+    return float(_vader.polarity_scores(text)["compound"])
+
 
 
 def predict(payload: Dict[str, Any]) -> Dict[str, Any]:
     text = payload.get("headline", "")
+
     fin = _finbert_scores(text)
     vader = _vader_compound(text)
-    
-    if _sklearn_model is not None:
-        feat_names = getattr(_sklearn_model, "feature_names_in_", None)
-        if feat_names is not None:
-            import numpy as np
-            vals = []
-            for f in feat_names:
-                if f.startswith("finbert_"):
-                    vals.append(fin.get(f, 0.0))
-                elif f == "vader_compound":
-                    vals.append(vader)
-                else:
-                    vals.append(float(payload.get(f, 0.0)))
-            probs = _sklearn_model.predict_proba([vals])[0]
-            prob_up = float(probs[1]) if len(probs) > 1 else float(probs[0])
-            label_up = prob_up >= 0.5
-            return {
-                "prob_up": prob_up,
-                "label_up": bool(label_up),
-                **fin,
-                "vader_compound": vader,
-                "message": "prediction from sklearn model",
-            }
-    
-    score = fin.get("finbert_positive", 0.0) - fin.get("finbert_negative", 0.0) + 0.5 * vader
-    prob_up = 1 / (1 + 2.71828 ** (-5 * score)) 
+
+  
+    if _lstm_model is not None:
+        # Feature order MUST match training
+        features = np.array([[
+    fin.get("finbert_positive", 0.0),
+    fin.get("finbert_negative", 0.0),
+    fin.get("finbert_neutral", 0.0),
+    vader,
+    float(payload.get("Open", 0.0)),
+    float(payload.get("High", 0.0)),
+    float(payload.get("Low", 0.0)),
+    float(payload.get("Close", 0.0)),
+    float(payload.get("Volume", 0.0)),
+    float(payload.get("SMA_5", 0.0)),
+]])
+
+
+        # LSTM expects 3D input
+        features = features.reshape((1, 1, features.shape[1]))
+
+        prob_up = float(_lstm_model.predict(features, verbose=0)[0][0])
+
+        return {
+            "prob_up": prob_up,
+            "label_up": prob_up >= 0.5,
+            **fin,
+            "vader_compound": vader,
+            "message": "prediction from Keras LSTM model",
+        }
+
+   
+    score = (
+        fin.get("finbert_positive", 0.0)
+        - fin.get("finbert_negative", 0.0)
+        + 0.5 * vader
+    )
+    prob_up = 1 / (1 + np.exp(-5 * score))
+
     return {
         "prob_up": float(prob_up),
-        "label_up": bool(prob_up >= 0.5),
+        "label_up": prob_up >= 0.5,
         **fin,
         "vader_compound": vader,
-        "message": "heuristic prediction (no sklearn model found)",
+        "message": "heuristic prediction (LSTM model not found)",
     }

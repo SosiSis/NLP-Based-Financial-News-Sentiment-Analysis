@@ -79,8 +79,8 @@ Based on results from `Evaluation.ipynb`, a traditional Random Forest classifier
 | Metric | Random Forest | LSTM (Deep Learning) |
 |------|---------------|---------------------|
 | **Accuracy** | *0.471* | *0.800* |
-| **F1-Score (UP)** | *0.000* | *0.000* |
-| **F1-Score (DOWN)** | *0.640* | *0.889* |
+| **F1-Score (DOWN)** | *0.000* | *0.000* |
+| **F1-Score (UP)** | *0.640* | *0.889* |
 
 ### 5.2 Key Findings
 
