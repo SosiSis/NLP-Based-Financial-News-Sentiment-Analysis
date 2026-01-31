@@ -4,9 +4,7 @@ import pandas as pd
 
 st.set_page_config(page_title="News → Price Predictor", layout="wide")
 
-# ────────────────────────────────────────
-# Modern clean CSS + horizontal ticker
-# ────────────────────────────────────────
+
 st.markdown("""
 <style>
     /* Light clean background */
@@ -96,14 +94,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ────────────────────────────────────────
-# Header
-# ────────────────────────────────────────
+
 st.markdown('<div class="main-title">Financial News → Next-day Price Direction</div>', unsafe_allow_html=True)
 
-# ────────────────────────────────────────
-# Form-like inputs
-# ────────────────────────────────────────
+
 st.markdown("### Enter News & Market Data")
 
 headline = st.text_area("News Headline / Summary", height=140, 
@@ -121,9 +115,6 @@ with col3:
     volume = st.number_input("Volume", value=0, format="%d", step=1000)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ────────────────────────────────────────
-# Prediction button & logic
-# ────────────────────────────────────────
 if st.button("Predict Direction", type="primary", use_container_width=True):
     if not headline.strip():
         st.warning("Please enter at least a headline.")
@@ -139,14 +130,14 @@ if st.button("Predict Direction", type="primary", use_container_width=True):
 
     with st.spinner("Predicting..."):
         try:
-            # Change URL if your backend is running elsewhere
+            
             resp = requests.post("http://localhost:8000/api/v1/predict", 
                                json=payload, 
                                timeout=30)
             resp.raise_for_status()
             data = resp.json()
 
-            # ── Main result ───────────────────────────────────
+            
             prob = data.get("prob_up", 0.5)
             direction = "UP" if data.get("label_up", prob >= 0.5) else "DOWN"
             
@@ -161,7 +152,7 @@ if st.button("Predict Direction", type="primary", use_container_width=True):
 
             st.caption(f"Predicted direction: **{direction}**")
 
-            # ── Sentiment breakdown ───────────────────────────
+            
             if "finbert_positive" in data:
                 st.subheader("Sentiment Breakdown")
                 df_sent = pd.DataFrame({

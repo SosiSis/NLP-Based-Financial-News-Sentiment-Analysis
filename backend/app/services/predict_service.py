@@ -2,15 +2,14 @@ from pathlib import Path
 from typing import Dict, Any
 try:
     import joblib
-except Exception:  # pragma: no cover - allow runtime without joblib installed
+except Exception:  
     joblib = None
 
-# Lazy imports for heavy ML libs (allow API to start without them)
 try:
     import torch
     from transformers import AutoTokenizer, AutoModelForSequenceClassification
     from torch.nn.functional import softmax
-except Exception:  # pragma: no cover - allow runtime without torch/transformers
+except Exception:  
     torch = None
     AutoTokenizer = None
     AutoModelForSequenceClassification = None
@@ -25,8 +24,7 @@ _vader = None
 _sklearn_model = None
 
 def _root_dir() -> Path:
-    # project root (two parents up from this file -> backend/app/services -> backend/app -> backend)
-    # adjust if you place `ml/serving` elsewhere
+    
     return Path(__file__).resolve().parents[3]
 
 MODEL_DIR = _root_dir() / "ml" / "serving"
@@ -36,7 +34,7 @@ SKMODEL_PATH = MODEL_DIR / "lstm_model.keras"
 def load_models():
     """Load FinBERT, VADER and optional sklearn model."""
     global _tokenizer, _model, _vader, _sklearn_model
-    # FinBERT (only if transformers/torch are available)
+    
     model_name = "ProsusAI/finbert"
     if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
         _tokenizer = None
@@ -91,7 +89,7 @@ def predict(payload: Dict[str, Any]) -> Dict[str, Any]:
     text = payload.get("headline", "")
     fin = _finbert_scores(text)
     vader = _vader_compound(text)
-    # If sklearn model present, build feature vector (attempt common names)
+    
     if _sklearn_model is not None:
         feat_names = getattr(_sklearn_model, "feature_names_in_", None)
         if feat_names is not None:
@@ -114,9 +112,9 @@ def predict(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "vader_compound": vader,
                 "message": "prediction from sklearn model",
             }
-    # Fallback simple heuristic
+    
     score = fin.get("finbert_positive", 0.0) - fin.get("finbert_negative", 0.0) + 0.5 * vader
-    prob_up = 1 / (1 + 2.71828 ** (-5 * score))  # scaled sigmoid heuristic
+    prob_up = 1 / (1 + 2.71828 ** (-5 * score)) 
     return {
         "prob_up": float(prob_up),
         "label_up": bool(prob_up >= 0.5),

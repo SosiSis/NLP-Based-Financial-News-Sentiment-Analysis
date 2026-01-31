@@ -11,5 +11,5 @@ def startup():
     try:
         predict_service.load_models()
     except Exception:
-        # keep startup resilient if models not available locally
+        
         pass
