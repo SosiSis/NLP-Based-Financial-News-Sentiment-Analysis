@@ -8,17 +8,17 @@ import pandas as pd
 
 try:
     import yfinance as yf
-except ImportError:  # pragma: no cover - only needed when downloading
+except ImportError:  
     yf = None
 
-# Paths
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "Data"
 NEWS_PATH = DATA_DIR / "raw_analyst_ratings.csv" / "raw_analyst_ratings.csv"
 PRICES_DIR = DATA_DIR / "yfinance_data"
 OUTPUT_PATH = DATA_DIR / "merged_news_prices.csv"
 
-# Map common legacy tickers to current symbols so we do not lose rows when merging
+# Map common legacy tickers to current symbols
 TICKER_ALIASES: dict[str, str] = {
     "GOOGL": "GOOG",
     "FB": "META",
@@ -45,7 +45,6 @@ def load_news(path: Path) -> pd.DataFrame:
     news["Ticker"] = news["Ticker"].apply(normalize_ticker)
 
     # Parse timezone-aware timestamps and extract local trading date.
-    # The date column has timestamps like "2020-06-05 10:30:54-04:00"
     news["date_parsed"] = pd.to_datetime(news["date"], utc=True, errors="coerce")
     news = news.dropna(subset=["date_parsed"])
     news["Date"] = news["date_parsed"].dt.tz_convert("America/New_York").dt.date
@@ -75,7 +74,7 @@ def load_prices(directory: Path, tickers: Iterable[str] | None = None) -> pd.Dat
             continue
 
         df = pd.read_csv(csv_path, parse_dates=["Date"])
-        # Build a unified frame with expected columns; fill missing ones with NaN
+
         out = pd.DataFrame()
         out["Date"] = df["Date"].dt.date
         out["Ticker"] = ticker
@@ -113,7 +112,7 @@ def download_prices(
             continue
         try:
             hist = yf.download(ticker, start=start, end=end, progress=False)
-        except Exception as exc:  # pragma: no cover - network dependent
+        except Exception as exc:  
             print(f"Failed to download {ticker}: {exc}")
             continue
         if hist.empty:
@@ -141,13 +140,13 @@ def main(
 ) -> None:
     news = load_news(NEWS_PATH)
 
-    # If no explicit tickers are provided, keep everything from the news file.
+    
     if target_tickers is None:
         target_tickers = sorted(news["Ticker"].unique())
     else:
         target_tickers = [normalize_ticker(t) for t in target_tickers]
 
-    # Optionally limit to the most frequent tickers, preferring tickers with price files on disk
+    
     if max_tickers:
         counts = news["Ticker"].value_counts()
         freq_order = list(counts.index)
@@ -162,13 +161,13 @@ def main(
     if news.empty:
         raise ValueError("No news rows left after filtering; check ticker list")
 
-    # Download any missing price files to cover the news date range.
+    
     if download_missing:
         start_date = news["Date"].min()
         end_date = news["Date"].max() + timedelta(days=1)
         missing = [t for t in target_tickers if not (PRICES_DIR / f"{t}_historical_data.csv").exists()]
         if missing:
-            # Prioritize tickers by news frequency, then cap to download_limit if provided
+            # Prioritize tickers by news frequency
             counts = news["Ticker"].value_counts()
             missing_sorted = sorted(missing, key=lambda t: counts.get(t, 0), reverse=True)
             if download_limit is not None:
